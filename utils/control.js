@@ -3,10 +3,9 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } = require('discord.js');
 const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
 const logger = require('../sys/logger');
-const sharedState = require('../sys/sharedState');
-const {  getSelectedAssistantId,setSelectedAssistantId,  getSelectedVoice } = sharedState;
+const {  getSelectedAssistantId,setSelectedAssistantId, getSelectedVoice} = require('../utils/helpers');
 const path = require('path');
-const { updateControlPanelContent } = require('../sys/sharedState');
+
 
 
 
@@ -79,8 +78,8 @@ function createAssistantPanel(assistantId) {
   logger.info(`🥝 Creating assistant panel for ${friendlyName} with image URL: ${imageUrl}`);
 
   const embed = new EmbedBuilder()
-    .setTitle(`Control Panel - ${friendlyName}`)
-    .setDescription(`You are now interacting with ${friendlyName}`)
+    .setTitle(`You are now talking to ${friendlyName}`)
+    //.setDescription(`You are now interacting with ${friendlyName}`)
     .setImage(imageUrl)
     .setColor(0x00AE86);
 
@@ -160,4 +159,4 @@ function createAskRickTeaModal() {
   return modal;
 }
 
-module.exports = { updateAssistantPanel, createControlPanel,createAssistantPanel,  createAskRickTeaModal, updateControlPanelContent };
+module.exports = { updateAssistantPanel, createControlPanel,createAssistantPanel,  createAskRickTeaModal };

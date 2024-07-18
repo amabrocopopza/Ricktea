@@ -2,14 +2,12 @@ const path = require('path');
 const fs = require('fs');
 const OpenAI = require('openai');
 const logger = require('../sys/logger');
-const sharedState = require('../sys/sharedState');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const { createControlPanel } = require('../utils/control');
-const { setAssistantToDefault, updateControlPanelMessage, getRandomLoadingMessage } = require('../utils/helpers');
+const { setAssistantToDefault, updateControlPanelMessage, getRandomLoadingMessage, getSelectedAssistantFriendlyName, getControlPanelMessageID, setControlPanelMessageID,setSelectedVoice, getSelectedVoice, getSelectedAssistantId,setSelectedLanguage } = require('../utils/helpers');
 const { SlashCommandBuilder } = require('discord.js');
 const { getOrCreateThreadId, addMessageToThread, runAndPollThread, textToSpeech } = require('../utils/openaiThreads');
 const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
-const { getSelectedAssistantFriendlyName, getControlPanelMessageID, setControlPanelMessageID, setSelectedAssistantId, setSelectedVoice, getSelectedVoice, getSelectedAssistantId, getSelectedLanguage, setSelectedLanguage } = require('../sys/sharedState');
 const { streamToFileAndDiscord } = require('../utils/audio');
 const openai = new OpenAI(process.env.OPENAI_API_KEY);
 

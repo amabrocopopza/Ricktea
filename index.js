@@ -3,14 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./sys/logger');
 const sodium = require('libsodium-wrappers');
-const sharedState = require('./sys/sharedState');
 const commandsPath = path.join(__dirname, 'commands');
-const { handleDisconnect, handleJoinCommand, handleDirectMeassages } = require('./commands/ricktea');
+const { handleJoinCommand, handleDirectMeassages } = require('./commands/ricktea');
 const { VOICES, OPENAI_ASSISTANTS, LANGUAGES } = require('./sys/config');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js') && file !== 'interactions.js'); // Exclude interactions.js
 const { Client, GatewayIntentBits, Partials, Collection, REST, Routes, ContextMenuCommandBuilder, ApplicationCommandType } = require('discord.js');
 const { handleButtonInteraction, handleModalSubmitInteraction, handleCommandInteraction, handleStringSelectMenuInteraction } = require('./commands/interactions');
-const { setSelectedVoice, setSelectedLanguage, setSelectedAssistantId, getSelectedAssistantId } = require('./sys/sharedState');
+const { setSelectedVoice, setSelectedLanguage, setSelectedAssistantId} = require('./utils/helpers');
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.DISCORD_APP_ID;

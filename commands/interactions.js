@@ -1,13 +1,9 @@
 // interactions.js
 const path = require('path');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
-
-const { createAskRickTeaModal, createControlPanel, createAssistantPanel, updateAssistantPanel,  updateControlPanelContent } = require('../utils/control');
-const { ReplayLastReply } = require('../utils/audio');
+const { createAskRickTeaModal, createControlPanel, createAssistantPanel, updateAssistantPanel } = require('../utils/control');
 const { handleDisconnect, handleSayCommand, handleJoinCommand } = require('../commands/ricktea');
-const { getSelectedVoice, getSelectedLanguage, getSelectedAssistantId, setSelectedLanguage, setSelectedVoice, setSelectedAssistantId, getControlPanelMessageID, setControlPanelMessageID } = require('../sys/sharedState');
+const { getSelectedVoice, getSelectedLanguage, getSelectedAssistantId, setSelectedLanguage, setSelectedVoice, setSelectedAssistantId } = require('../utils/helpers');
 const logger = require('../sys/logger');
-const sharedState = require('../sys/sharedState'); // Import shared state
 const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
 
 async function handleButtonInteraction(interaction) {
