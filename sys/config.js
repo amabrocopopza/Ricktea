@@ -3,15 +3,15 @@ const logger = require('./logger'); // Ensure logging is available
 const OPENAI_ASSISTANTS = {
   Ricktea: {
     id: process.env.OPENAI_ASSISTANT_ID_RICKTEA || 'asst_jCrgR5TyJefrRW87lCmsySDA',
-    friendlyName: 'RickTea  🍵'
+    friendlyName: 'RickTea 🍵'
   },
   Dimi: {
     id: process.env.OPENAI_ASSISTANT_ID_DIMI || 'asst_CRgLdnen02iFj1iKdrKn0r4p',
-    friendlyName: 'Dimi  🎮'
+    friendlyName: 'Dimi 🎮'
   },
   Jason: {
     id: process.env.OPENAI_ASSISTANT_ID_JASON || 'asst_q6I5xue8EWQ5low54tehHBhh',
-    friendlyName: 'Jason  🦢'
+    friendlyName: 'Jason 🦢'
   },
   DEFAULT: 'Ricktea',
   OPTIONS: ['Ricktea', 'Dimi', 'Jason'],

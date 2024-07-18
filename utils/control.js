@@ -61,13 +61,13 @@ function createAssistantPanel(assistantId) {
   const friendlyName = OPENAI_ASSISTANTS[assistantKey].friendlyName;
   let imageUrl;
   switch (friendlyName) {
-    case 'RickTea':
+    case 'RickTea 🍵':
       imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_ricktea.webp';
       break;
-    case 'Dimi':
+    case 'Dimi 🎮':
       imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_dimi.webp';
       break;
-    case 'Jason':
+    case 'Jason 🦢':
       imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_jason.webp';
       break;
     default:
