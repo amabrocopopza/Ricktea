@@ -42,7 +42,7 @@ function saveThreadId(user_id, thread_id) {
         logger.error(`⛑️ Error saving thread ID for user ${user_id}: ${err.message}`);
         return reject(err);
       }
-      logger.info(`🥝 Saved thread ID ${thread_id} for user ${user_id} at ${timestamp}`);
+      logger.info(`🥝 Saved thread ID ${thread_id} for user ${user_id}`);
       resolve();
     });
   });

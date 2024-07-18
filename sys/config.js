@@ -1,5 +1,3 @@
-// discord-bot-node-js\sys\config.js
-
 const logger = require('./logger'); // Ensure logging is available
 
 const OPENAI_ASSISTANTS = {

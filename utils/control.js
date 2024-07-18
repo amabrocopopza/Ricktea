@@ -4,44 +4,91 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, M
 const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
 const logger = require('../sys/logger');
 const sharedState = require('../sys/sharedState');
-const { getSelectedAssistantId, getSelectedVoice, getSelectedLanguage } = sharedState;
+const {  getSelectedAssistantId,setSelectedAssistantId,  getSelectedVoice } = sharedState;
 const path = require('path');
+const { updateControlPanelContent } = require('../sys/sharedState');
+
+
+
 
 function createControlPanel() {
-  const selectedAssistant = getSelectedAssistantId();
-  const selectedVoice = getSelectedVoice();
-  const selectedLanguage = getSelectedLanguage();
+  logger.info('🥝 Creating control panel with combined image');
 
-  const assistantKey = Object.keys(OPENAI_ASSISTANTS).find(key => OPENAI_ASSISTANTS[key].id === selectedAssistant);
-  const friendlyName = assistantKey ? OPENAI_ASSISTANTS[assistantKey].friendlyName : 'Unknown';
+  // Use CloudFront URL for the combined image
+  const imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_combined.webp';
 
-  logger.info(`🥝 Creating control panel with assistant ${selectedAssicd stant}, voice ${selectedVoice}, and language ${selectedLanguage}`);
-
-  // Create an embed with an image
+  // Create an embed with the combined image
   const embed = new EmbedBuilder()
-    .setTitle('Control Panel')
-    .setDescription('Ask me something, Dont be scared')
-    .setImage('attachment://ricktea.webp') // Use the attachment name
-    .setColor(0x00AE86);
+    .setTitle('Select an assistant')
+    //.setDescription('Select an assistant')
+    .setColor(0x00AE86)
+    .setImage(imageUrl)
+    // .setAuthor({ name: 'Nameless', iconURL: 'https://deebot.s3.af-south-1.amazonaws.com/optimized_dimi.webp', url: 'https://cityzen.co.za' });
 
-  // Create action rows for buttons and select menus
-  const controlPanelRow = new ActionRowBuilder()
+  // Create buttons for each assistant
+  const imageButtonRow = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
-        .setCustomId('ask_ricktea')
-        .setLabel(`Ask ${friendlyName}`)
-        .setStyle(ButtonStyle.Success),
+        .setCustomId('select_ricktea')
+        .setLabel('\u200B 🫖 Select Ricktea')
+        .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId('replay_last_reply')
-        .setLabel('Replay Last Reply')
+        .setCustomId('select_dimi')
+        .setLabel('\u200B 🎮 Select Dimi')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('select_jason')
+        .setLabel('🦢 Select Jason')
         .setStyle(ButtonStyle.Primary)
     );
+
+  return {
+    components: [imageButtonRow],
+    embeds: [embed]
+  };
+}
+
+function createAssistantPanel(assistantId) {
+  logger.info(`Creating assistant panel for assistant ID: ${assistantId}`);
+
+  setSelectedAssistantId(assistantId);
+  const assistantKey = Object.keys(OPENAI_ASSISTANTS).find(key => OPENAI_ASSISTANTS[key].id === assistantId);
+
+  if (!assistantKey) {
+    logger.error(`⛑️  Invalid assistant ID: ${assistantId}`);
+    throw new Error(`Invalid assistant ID: ${assistantId}`);
+  }
+
+  const friendlyName = OPENAI_ASSISTANTS[assistantKey].friendlyName;
+  let imageUrl;
+  switch (friendlyName) {
+    case 'RickTea':
+      imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_ricktea.webp';
+      break;
+    case 'Dimi':
+      imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_dimi.webp';
+      break;
+    case 'Jason':
+      imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_jason.webp';
+      break;
+    default:
+      imageUrl = 'https://deebot.s3.af-south-1.amazonaws.com/optimized_combined.webp';
+      break;
+  }
+
+  logger.info(`🥝 Creating assistant panel for ${friendlyName} with image URL: ${imageUrl}`);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`Control Panel - ${friendlyName}`)
+    .setDescription(`You are now interacting with ${friendlyName}`)
+    .setImage(imageUrl)
+    .setColor(0x00AE86);
 
   const voiceSelectRow = new ActionRowBuilder()
     .addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId('select_voice')
-        .setPlaceholder(`Voice - ${VOICES.OPTIONS[selectedVoice]}`)
+        .setCustomId(`select_voice_${assistantId}`)
+        .setPlaceholder(`Voice - ${getSelectedVoice()}`)
         .addOptions(
           Object.keys(VOICES.OPTIONS).map(voice => ({
             label: VOICES.OPTIONS[voice],
@@ -50,37 +97,45 @@ function createControlPanel() {
         )
     );
 
-  const assistantSelectRow = new ActionRowBuilder()
-    .addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('select_assistant')
-        .setPlaceholder(`Assistant - ${friendlyName}`)
-        .addOptions(
-          OPENAI_ASSISTANTS.OPTIONS.map(assistant => ({
-            label: OPENAI_ASSISTANTS[assistant].friendlyName,
-            value: assistant
-          }))
-        )
-    );
-
-  const closeButtonRow = new ActionRowBuilder()
+  const buttonRow = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
-        .setCustomId('close')
+        .setCustomId(`ask_${assistantId}`)
+        .setLabel(`Ask ${friendlyName}`)
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`close_${assistantId}`)
         .setLabel('Close')
         .setStyle(ButtonStyle.Danger)
     );
 
   return {
     embeds: [embed],
-    components: [controlPanelRow, voiceSelectRow, assistantSelectRow, closeButtonRow],
-    files: [{
-      attachment: path.resolve(__dirname, '../sys/ricktea.webp'), // Path to the image
-      name: 'ricktea.webp' // Name to reference in the embed
-    }]
+    components: [voiceSelectRow, buttonRow]
   };
 }
 
+async function updateAssistantPanel(interaction, assistantPanel) {
+  try {
+    const currentMessage = await interaction.channel.messages.fetch(interaction.message.id);
+
+    // Filter out existing assistant panel components
+    const newComponents = currentMessage.components.filter(row => row.components.every(comp => !comp.customId.startsWith('select_voice_') && !comp.customId.startsWith('ask_') && !comp.customId.startsWith('close_')));
+
+    // Add new assistant panel components
+    newComponents.push(...assistantPanel.components);
+
+    await currentMessage.edit({
+      embeds: [currentMessage.embeds[0], ...assistantPanel.embeds],
+      components: newComponents
+    });
+
+    await interaction.update({});
+  } catch (error) {
+    logger.error('⛑️  Error updating assistant panel:', error);
+    throw error;
+  }
+}
 
 
 function createAskRickTeaModal() {
@@ -105,4 +160,4 @@ function createAskRickTeaModal() {
   return modal;
 }
 
-module.exports = { createControlPanel, createAskRickTeaModal };
+module.exports = { updateAssistantPanel, createControlPanel,createAssistantPanel,  createAskRickTeaModal, updateControlPanelContent };

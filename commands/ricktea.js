@@ -5,28 +5,63 @@ const logger = require('../sys/logger');
 const sharedState = require('../sys/sharedState');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const { createControlPanel } = require('../utils/control');
-const { updateControlPanelMessage, getRandomLoadingMessage } = require('../utils/helpers');
+const { setAssistantToDefault, updateControlPanelMessage, getRandomLoadingMessage } = require('../utils/helpers');
 const { SlashCommandBuilder } = require('discord.js');
 const { getOrCreateThreadId, addMessageToThread, runAndPollThread, textToSpeech } = require('../utils/openaiThreads');
 const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
-const { getControlPanelMessageID, setControlPanelMessageID, setSelectedAssistantId, setSelectedVoice, getSelectedVoice, getSelectedAssistantId, getSelectedLanguage, setSelectedLanguage } = require('../sys/sharedState');
+const { getSelectedAssistantFriendlyName, getControlPanelMessageID, setControlPanelMessageID, setSelectedAssistantId, setSelectedVoice, getSelectedVoice, getSelectedAssistantId, getSelectedLanguage, setSelectedLanguage } = require('../sys/sharedState');
 const { streamToFileAndDiscord } = require('../utils/audio');
 const openai = new OpenAI(process.env.OPENAI_API_KEY);
 
-let inactivityTimer;
+
 let currentAssistantId = getSelectedAssistantId();
 
-function handleResetInactivityTimer(voiceChannel) {
-  clearTimeout(inactivityTimer);
-  inactivityTimer = setTimeout(() => {
-    handleDisconnect(voiceChannel);
-  }, 300000); // 5 minutes of inactivity
-  logger.info('🥝 Inactivity timer reset.');
+
+async function handleDisconnect(context, type = 'interaction') {
+  let channel = context.channel;
+  let controlPanelMessageID = getControlPanelMessageID(); // Ensure we are getting the latest message ID
+
+  const connection = getVoiceConnection(channel.guild.id);
+  if (connection) {
+    connection.destroy();
+
+    // Reset to default values
+    setSelectedVoice(VOICES.DEFAULT);
+    setSelectedLanguage(LANGUAGES.DEFAULT);
+    setAssistantToDefault();
+
+    // Fetch and delete the control panel message
+    if (controlPanelMessageID) {
+      try {
+        const controlPanelMessage = await channel.messages.fetch(controlPanelMessageID);
+        if (controlPanelMessage && controlPanelMessage.deletable) {
+          await controlPanelMessage.delete();
+          setControlPanelMessageID(null); // Reset the control panel message ID
+        }
+      } catch (error) {
+        if (error.code === 10008) {
+          logger.error(`⛑️ Failed to delete control panel message: Unknown Message (${controlPanelMessageID})`);
+        } else {
+          logger.error('⛑️ Failed to delete control panel message:', error);
+        }
+      }
+    }
+
+  }
 }
 
 async function handleJoinCommand(interaction, playGreeting = false) {
-  if (interaction.member.voice.channel) {
+  try {
     const voiceChannel = interaction.member.voice.channel;
+
+    if (!voiceChannel) {
+      await interaction.reply({
+        content: 'You need to be in a voice channel first!',
+        ephemeral: true,
+      });
+      return;
+    }
+
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId: voiceChannel.guild.id,
@@ -41,109 +76,34 @@ async function handleJoinCommand(interaction, playGreeting = false) {
 
     connection.subscribe(player);
 
-    player.on(AudioPlayerStatus.Idle, () => {
-      handleResetInactivityTimer(voiceChannel);
-    });
-
     const { embeds, components, files } = createControlPanel();
 
-    try {
-      // Check if the interaction has already been replied to or deferred
-      if (!interaction.replied && !interaction.deferred) {
-        const message = await interaction.reply({
-          content: `**Steeped into the voice channel! 🍵 Choose your brew of action:**`,
-          embeds,
-          components,
-          files,
-          fetchReply: true
-        });
-        setControlPanelMessageID(message.id);
-        logger.info(`🥝 Joined voice channel: ${voiceChannel.id} with control panel message ID: ${message.id}`);
-      } else {
-        // If the interaction is already replied or deferred, edit the reply
-        const message = await interaction.editReply({
-          content: `**Steeped into the voice channel! 🍵 Choose your brew of action:**`,
-          embeds,
-          components,
-          files
-        });
-        setControlPanelMessageID(message.id);
-        logger.info(`🥝 Joined voice channel: ${voiceChannel.id} with control panel message ID: ${message.id}`);
-      }
-    } catch (error) {
-      logger.error('⛑️  Failed to send initial reply:', error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'Error joining the voice channel!', ephemeral: true });
-      }
-    }
-  } else {
-    try {
-      await interaction.reply({
-        content: 'You need to be in a voice channel first!',
-        ephemeral: true,
+    let message;
+    if (interaction.replied || interaction.deferred) {
+      message = await interaction.editReply({
+        content: '',
+        embeds,
+        components,
+        files,
       });
-      logger.warn('⚠️ User not in a voice channel.');
-    } catch (error) {
-      logger.error('⛑️  Failed to send error reply:', error);
-    }
-  }
-}
-
-async function handleDisconnect(interaction) {
-  const connection = getVoiceConnection(interaction.guild.id);
-  if (connection) {
-    connection.destroy();
-
-    // Fetch and delete the control panel message
-    const controlPanelMessageID = getControlPanelMessageID();
-    if (controlPanelMessageID) {
-      try {
-        const controlPanelMessage = await getControlPanelMessageID();
-        if (controlPanelMessage && controlPanelMessage.deletable) {
-          await controlPanelMessage.delete();
-          setControlPanelMessageID(null); // Reset the control panel message ID
-          logger.info('🥝 Control panel message deleted successfully.');
-        }
-      } catch (error) {
-        if (error.code === 10008) {
-          logger.error('⛑️  Failed to delete control panel message: Unknown Message');
-        } else {
-          logger.error('⛑️  Failed to delete control panel message:', error);
-        }
-      }
+    } else {
+      message = await interaction.reply({
+        content: '',
+        embeds,
+        components,
+        files,
+        fetchReply: true,
+      });
     }
 
-    // Reset to default values
-    setSelectedVoice(VOICES.DEFAULT);
-    setSelectedLanguage(LANGUAGES.DEFAULT);
-    setSelectedAssistantId(OPENAI_ASSISTANTS.DEFAULT);
-
-    try {
-      const goodbyeMessage = await interaction.channel.send('Peace ✌️.');
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      if (goodbyeMessage.deletable) {
-        await goodbyeMessage.delete();
-      }
-      logger.info('🥝 Disconnected from voice channel and sent goodbye message.');
-    } catch (error) {
-      logger.error('⛑️  Failed to send or delete goodbye message:', error);
-    }
-  } else {
-    try {
-      const notInVoiceMessage = await interaction.channel.send('I am not in a voice channel!');
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      if (notInVoiceMessage.deletable) {
-        await notInVoiceMessage.delete();
-      }
-      logger.warn('⚠️ Attempted to disconnect, but not in a voice channel.');
-    } catch (error) {
-      logger.error('⛑️  Failed to send or delete not in voice channel message:', error);
-    }
+    setControlPanelMessageID(message.id);
+  } catch (error) {
+    logger.error('⛑️  Error in handleJoinCommand:', error);
   }
 }
 
 async function handleSayCommand(interaction, text) {
-  const userId = interaction.user.id;
+  const userId = getSelectedAssistantFriendlyName();
   const username = interaction.user.username;
   const selectedAssistantId = getSelectedAssistantId(); // Use the new function to get the selected assistant ID
   const selectedVoice = getSelectedVoice(); // Use the new function to get the selected voice
@@ -152,12 +112,12 @@ async function handleSayCommand(interaction, text) {
   if (!threadId) {
     throw new Error('Error creating or retrieving thread.');
   }
-  await interaction.editReply({ content: getRandomLoadingMessage() });
+  interaction.editReply({ content: getRandomLoadingMessage() });
   const addMessageResult = await addMessageToThread(threadId, 'user', text);
   if (!addMessageResult) {
     throw new Error('Error adding message to the thread.');
   }
-  await interaction.editReply({ content: getRandomLoadingMessage() });
+  interaction.editReply({ content: getRandomLoadingMessage() });
   const runResponse = await runAndPollThread(threadId, selectedAssistantId, username); // Pass selectedAssistantId
   if (!runResponse) {
     throw new Error('Error running the conversation.');
@@ -167,7 +127,7 @@ async function handleSayCommand(interaction, text) {
   logger.info(`🥝 OpenAI Response: ${responseText}`);
 
   try {
-    await interaction.editReply({ content: '🗣️ Talking to you!' });
+    interaction.editReply({ content: '🗣️ Talking to you!' });
     const stream = await textToSpeech(responseText, selectedVoice);
     const speechFile = path.resolve(__dirname, '../audio_clips/current/say_command_response_audio.opus');
     await streamToFileAndDiscord(stream, speechFile, interaction.member.voice.channel);
@@ -176,12 +136,10 @@ async function handleSayCommand(interaction, text) {
     logger.error('⛑️  Error during text-to-speech processing:', error);
     throw new Error('Error generating or playing the audio.');
   }
-
-  // Update the control panel message
   try {
     const controlPanelMessageID = getControlPanelMessageID();
     if (controlPanelMessageID) {
-      const newContent = `**Steeped into the voice channel! 🍵 Choose your brew of action:**\n\n🍵 Your message has been served! Enjoy! 🍵\n\n`;
+      const newContent = ``;
       await updateControlPanelMessage(interaction, newContent);
     } else {
       logger.error('⛑️  Control panel message ID is not set.');
@@ -202,49 +160,40 @@ async function handleCleanCommand(interaction) {
 
     if (number <= 0) {
       await interaction.reply({ content: 'Please provide a number greater than 0.', ephemeral: true });
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      await interaction.deleteReply();
+      setTimeout(async () => {
+        await interaction.deleteReply();
+      }, 5000);
       return;
     }
 
-    const messagesToDelete = [];
-    let totalFetched = 0;
-    let lastMessageId = null;
+    let messagesToDelete = number;
 
-    while (messagesToDelete.length < number) {
-      const limit = Math.min(100, number - messagesToDelete.length);
-      const fetchedMessages = await interaction.channel.messages.fetch({ limit, before: lastMessageId });
+    while (messagesToDelete > 0) {
+      const limit = Math.min(100, messagesToDelete);
+      const fetchedMessages = await interaction.channel.messages.fetch({ limit });
+      
       if (fetchedMessages.size === 0) break;
 
-      fetchedMessages.forEach(msg => {
-        if (msg.deletable && Date.now() - msg.createdTimestamp < 1209600000) { // 14 days in milliseconds
-          messagesToDelete.push(msg.id);
-        }
-      });
+      const deletableMessages = fetchedMessages.filter(msg => msg.deletable && Date.now() - msg.createdTimestamp < 1209600000);
 
-      lastMessageId = fetchedMessages.last().id;
-      totalFetched += fetchedMessages.size;
-      if (totalFetched >= number) break;
-    }
-
-    logger.info(`🥝 Messages to delete: ${messagesToDelete}`);
-
-    for (const msgId of messagesToDelete) {
-      const message = await interaction.channel.messages.fetch(msgId);
-      if (message.deletable) {
-        await message.delete().catch(console.error);
+      if (deletableMessages.size > 0) {
+        await interaction.channel.bulkDelete(deletableMessages, true);
+        messagesToDelete -= deletableMessages.size;
+      } else {
+        break;
       }
     }
 
-    await interaction.reply({ content: `Successfully deleted ${messagesToDelete.length} messages.`, ephemeral: true });
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    await interaction.deleteReply();
-    logger.info(`🥝 Deleted ${messagesToDelete.length} messages.`);
+    await interaction.reply({ content: `Successfully deleted ${number - messagesToDelete} messages.`, ephemeral: true });
+    setTimeout(async () => {
+      await interaction.deleteReply();
+    }, 5000);
   } catch (error) {
-    logger.error('⛑️  Failed to delete messages:', error);
+    console.error('⛑️  Failed to delete messages:', error);
     await interaction.reply({ content: 'Failed to delete messages. Please try again.', ephemeral: true });
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    await interaction.deleteReply();
+    setTimeout(async () => {
+      await interaction.deleteReply();
+    }, 5000);
   }
 }
 
@@ -374,21 +323,31 @@ module.exports = {
       subcommand
         .setName('clean')
         .setDescription('Clean the channel')
+        .addIntegerOption(option =>
+          option
+            .setName('number')
+            .setDescription('Number of messages to delete')
+            .setRequired(true)
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
         .setName('ping')
         .setDescription('Check the bot\'s latency')
     ),
+
   async execute(interaction) {
     const subcommandGroup = interaction.options.getSubcommandGroup(false);
     const subcommand = interaction.options.getSubcommand();
 
-    if (subcommandGroup === 'channel') {
-      if (subcommand === 'join') {
-        await handleJoinCommand(interaction, getSelectedVoice(), getSelectedLanguage(), getSelectedAssistantId(), true);
-      } else if (subcommand === 'leave') {
-        await handleDisconnect(interaction); // Use the updated handleDisconnect function
+    if (subcommand === 'channel') {
+      const action = interaction.options.getString('action');
+      if (action === 'join') {
+        await handleJoinCommand(interaction, false); 
+      } else if (action === 'leave') {
+        await handleDisconnect(interaction); 
+        await interaction.reply({ content: 'Processing your request...', ephemeral: false });
+        await interaction.deleteReply();
       }
     } else if (subcommand === 'say') {
       const text = interaction.options.getString('text');

@@ -3,7 +3,9 @@ const { OPENAI_ASSISTANTS, VOICES } = require('../sys/config');
 const fs = require('fs');
 const logger = require('../sys/logger'); // Ensure logging is available
 const path = require('path');
-const { getControlPanelMessageID, setControlPanelMessageID } = require('../sys/sharedState');
+const { setSelectedAssistantId, getControlPanelMessageID, setControlPanelMessageID,  } = require('../sys/sharedState');
+
+
 async function updateControlPanelMessage(interaction, newContent) {
   try {
     const controlPanelMessageID = getControlPanelMessageID();
@@ -32,6 +34,12 @@ async function updateControlPanelMessage(interaction, newContent) {
   }
 }
 
+function setAssistantToDefault() {
+  const defaultAssistantKey = OPENAI_ASSISTANTS.DEFAULT;
+  const defaultAssistantId = OPENAI_ASSISTANTS[defaultAssistantKey].id;
+  setSelectedAssistantId(defaultAssistantId);
+  logger.info(`🥝 Assistant set to default: ${defaultAssistantKey}`);
+}
 
 function getRandomLoadingMessage() {
   try {
@@ -47,4 +55,4 @@ function getRandomLoadingMessage() {
   }
 }
 
-module.exports = { getRandomLoadingMessage, updateControlPanelMessage,   };
+module.exports = { setAssistantToDefault, getRandomLoadingMessage, updateControlPanelMessage,   };

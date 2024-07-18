@@ -5,7 +5,7 @@ const logger = require('./sys/logger');
 const sodium = require('libsodium-wrappers');
 const sharedState = require('./sys/sharedState');
 const commandsPath = path.join(__dirname, 'commands');
-const { handleJoinCommand, handleDirectMeassages } = require('./commands/ricktea');
+const { handleDisconnect, handleJoinCommand, handleDirectMeassages } = require('./commands/ricktea');
 const { VOICES, OPENAI_ASSISTANTS, LANGUAGES } = require('./sys/config');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js') && file !== 'interactions.js'); // Exclude interactions.js
 const { Client, GatewayIntentBits, Partials, Collection, REST, Routes, ContextMenuCommandBuilder, ApplicationCommandType } = require('discord.js');
@@ -80,11 +80,13 @@ client.once('ready', () => {
   // Ensure initial shared state values are set
   setSelectedVoice(VOICES.SELECTED);
   setSelectedLanguage(LANGUAGES.SELECTED);
-  setSelectedAssistantId(OPENAI_ASSISTANTS.SELECTED);
+  setSelectedAssistantId(OPENAI_ASSISTANTS[OPENAI_ASSISTANTS.DEFAULT].id);
+
+
 });
 
 client.on('interactionCreate', async interaction => {
-  logger.info(`🥝 Received interaction: ${interaction.commandName} from ${interaction.user.tag}`);
+  logger.info(`🥝 Received interaction: ${interaction.commandName || interaction.customId} from ${interaction.user.tag}`);
   try {
     if (interaction.isButton()) {
       await handleButtonInteraction(interaction);

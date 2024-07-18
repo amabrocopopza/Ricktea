@@ -1,36 +1,57 @@
 // interactions.js
+const path = require('path');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 
-const { createAskRickTeaModal, createControlPanel } = require('../utils/control');
+const { createAskRickTeaModal, createControlPanel, createAssistantPanel, updateAssistantPanel,  updateControlPanelContent } = require('../utils/control');
 const { ReplayLastReply } = require('../utils/audio');
 const { handleDisconnect, handleSayCommand, handleJoinCommand } = require('../commands/ricktea');
 const { getSelectedVoice, getSelectedLanguage, getSelectedAssistantId, setSelectedLanguage, setSelectedVoice, setSelectedAssistantId, getControlPanelMessageID, setControlPanelMessageID } = require('../sys/sharedState');
 const logger = require('../sys/logger');
 const sharedState = require('../sys/sharedState'); // Import shared state
+const { OPENAI_ASSISTANTS, VOICES, LANGUAGES } = require('../sys/config');
 
 async function handleButtonInteraction(interaction) {
+  const customId = interaction.customId;
+  logger.info(`🥝 Button interaction received: ${customId}`);
+
   try {
-    if (interaction.customId === 'ask_ricktea') {
+    let assistantPanel;
+
+    if (customId.startsWith('select_')) {
+      let assistantId;
+      switch (customId) {
+        case 'select_ricktea':
+          assistantId = OPENAI_ASSISTANTS.Ricktea.id;
+          break;
+        case 'select_dimi':
+          assistantId = OPENAI_ASSISTANTS.Dimi.id;
+          break;
+        case 'select_jason':
+          assistantId = OPENAI_ASSISTANTS.Jason.id;
+          break;
+        default:
+          logger.warn(`⚠️ Unknown button ID: ${customId}`);
+          return;
+      }
+
+      if (!assistantId) {
+        logger.error(`⛑️  Assistant ID is undefined for customId: ${customId}`);
+        await interaction.reply({ content: 'There was an error while handling this interaction!', ephemeral: true });
+        return;
+      }
+
+      logger.info(`🥝 Creating assistant panel for assistant ID: ${assistantId}`);
+      assistantPanel = createAssistantPanel(assistantId);
+
+      await updateAssistantPanel(interaction, assistantPanel);
+
+    } else if (customId.startsWith('ask_')) {
       const modal = createAskRickTeaModal();
       await interaction.showModal(modal);
-    } else if (interaction.customId === 'replay_last_reply') {
-      await ReplayLastReply(interaction);
-    } else if (interaction.customId === 'close') {
-      try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.update({ content: 'The control panel has been closed.', components: [] });
-        } else {
-          await interaction.editReply({ content: 'The control panel has been closed.', components: [] });
-        }
-        logger.info('🥝 Close button interaction received');
-        await handleDisconnect(interaction);
-      } catch (error) {
-        logger.error('⛑️  Error handling close interaction:', error);
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'There was an error while handling this interaction!', ephemeral: true });
-        } else {
-          await interaction.editReply({ content: 'There was an error while handling this interaction!' });
-        }
-      }
+    } else if (customId.startsWith('close_')) {
+      await handleDisconnect(interaction); // Call handleDisconnect for close_ interactions
+    } else {
+      logger.warn(`⚠️ Unknown button ID: ${customId}`);
     }
   } catch (error) {
     logger.error('⛑️  Error handling button interaction:', error);
@@ -41,7 +62,6 @@ async function handleButtonInteraction(interaction) {
     }
   }
 }
-
 
 async function handleModalSubmitInteraction(interaction) {
   try {
@@ -88,7 +108,7 @@ async function handleCommandInteraction(interaction, client) {
     if (interaction.commandName === 'Summon Ricktea') {
       const voiceChannel = interaction.member.voice.channel;
       if (!voiceChannel) {
-        await interaction.reply({ content: '⛑️  You need to be in a voice channel to use this ⛑️ .', ephemeral: true });
+        await interaction.reply({ content: '⛑️  You need to be in a voice channel to use this ⛑️.', ephemeral: true });
         await new Promise(resolve => setTimeout(resolve, 10000));
         await interaction.deleteReply();
         return;
@@ -100,8 +120,7 @@ async function handleCommandInteraction(interaction, client) {
       }
 
       try {
-        await handleJoinCommand(interaction, selectedVoice, selectedLanguage, selectedAssistant, true);
-        // await interaction.followUp({ content: 'Joined the voice channel successfully!' });
+        await handleJoinCommand(interaction, false);
       } catch (error) {
         logger.error('⛑️  Error executing join command:', error);
         await interaction.editReply({ content: `There was an error while executing this command: ${error.message}` });
@@ -116,31 +135,17 @@ async function handleCommandInteraction(interaction, client) {
     return;
   }
 
-  // Retrieve the currently selected assistant key and its ID from the configuration
-  let currentAssistantId = getSelectedAssistantId();
-  // Retrieve the selected voice and language from the configuration
-  const selectedVoice = getSelectedVoice();
-  const selectedLanguage = getSelectedLanguage();
-
+  // Handle the command if it exists
   try {
-    // If the interaction has not been deferred or replied to, defer the reply
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ ephemeral: false });
-    }
-    // Execute the command, passing in the interaction and configuration settings
-    await command.execute(interaction, currentAssistantId, selectedVoice, selectedLanguage);
+    await command.execute(interaction);
   } catch (error) {
-    // Log the error
-    logger.error('⛑️  Error handling command interaction:', error);
-    // If the interaction has not been replied to or deferred, send an error reply
-    if (!interaction.replied && !interaction.deferred) {
+    logger.error(`⛑️  Error executing command ${interaction.commandName}:`, error);
+    if (!interaction.replied) {
       await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-    } else {
-      // Otherwise, edit the existing reply with the error message
-      await interaction.editReply({ content: 'There was an error while executing this command!' });
     }
   }
 }
+
 
 async function handleStringSelectMenuInteraction(interaction) {
   const { customId, values } = interaction;
@@ -148,6 +153,7 @@ async function handleStringSelectMenuInteraction(interaction) {
 
   try {
     let updateMessage = true;
+    let newComponents, newEmbeds, newFiles;
 
     switch (customId) {
       case 'select_language':
@@ -161,6 +167,10 @@ async function handleStringSelectMenuInteraction(interaction) {
       case 'select_assistant':
         setSelectedAssistantId(values[0]);
         logger.info(`🥝 Selected assistant: ${values[0]}`);
+        const controlPanel = createControlPanel(); // Create updated control panel
+        newComponents = controlPanel.components;
+        newEmbeds = controlPanel.embeds;
+        newFiles = controlPanel.files;
         break;
       default:
         updateMessage = false;
@@ -168,21 +178,11 @@ async function handleStringSelectMenuInteraction(interaction) {
     }
 
     if (updateMessage) {
-      const { embeds, components, files } = createControlPanel();
-
-      const controlPanelMessageID = getControlPanelMessageID();
-      if (!controlPanelMessageID) {
-        throw new Error('Control panel message ID is not set.');
+      if (!newComponents) {
+        const controlPanel = createControlPanel(); // Create updated control panel
+        newComponents = controlPanel.components;
       }
-
-      const controlPanelMessage = await interaction.channel.messages.fetch(controlPanelMessageID);
-      await controlPanelMessage.edit({
-        content: null, // Clear content to avoid conflicts
-        embeds,
-        components,
-        files
-      });
-
+      await updateControlPanelContent(interaction, newComponents, newEmbeds, newFiles);
       await interaction.update({});
     }
   } catch (error) {
